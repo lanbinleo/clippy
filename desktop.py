@@ -18,6 +18,9 @@ from PIL import Image, ImageDraw
 
 class ClippyDesktop:
     def __init__(self):
+
+        self.version = "v1.0.0"
+
         self.server_url = "ws://localhost:8948/ws"
         self.server_http_url = "http://localhost:8948"
         self.ws = None
@@ -49,6 +52,8 @@ class ClippyDesktop:
         )
         self.startup_shortcut = os.path.join(self.startup_folder, 'Clippy.lnk')
 
+        self.version_display = f"版本号：{self.version}"
+
         # 获取当前脚本目录
         if getattr(sys, 'frozen', False):
             # 打包后的exe
@@ -58,6 +63,9 @@ class ClippyDesktop:
             self.app_dir = os.path.dirname(os.path.abspath(__file__))
 
         self.vbs_path = os.path.join(self.app_dir, 'start-clippy-silent.vbs')
+
+        # 启动服务器（如果未运行）
+        self.start_server_from_tray()
 
     def create_main_window(self):
         """创建主窗口（隐藏，用于托盘）"""
@@ -121,7 +129,7 @@ class ClippyDesktop:
         image = self.create_icon_image('#4CAF50', '#2E7D32')
 
         menu = Menu(
-            MenuItem('显示窗口', self.show_popup_from_tray),
+            MenuItem(self.version_display, lambda item: None, enabled=False),
             Menu.SEPARATOR,
             MenuItem(
                 '开机启动',
