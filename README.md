@@ -2,45 +2,79 @@
 
 通过手机语音输入，实时同步到电脑端剪贴板的工具。
 
+作者打包了一份Go编译的服务器、Python桌面客户端，并用Coco编辑器（https://coco.codemao.cn）随手搓了一个APP，也打包进来了。如果你想自己开发手机端，可以参考 `API.md` 文档。
+
+无毒，但介意者勿用哈，打包一个很快的。
+
 ## 项目结构
 
 ```
 Clippy/
-├── server.exe          # Go后端服务器（已编译）
-├── desktop.py          # Python桌面客户端
-├── requirements.txt    # Python依赖
-├── API.md             # API文档
-└── cmd/               # Go源代码
-    ├── server/        # 服务器源码
-    └── desktop/       # Fyne桌面端源码（未使用）
+├── server.exe                    # Go后端服务器（已编译）
+├── clippy-desktop.exe            # Python桌面客户端（打包后）
+├── desktop.py                    # Python桌面客户端源码
+├── requirements.txt              # Python依赖
+├── API.md                        # API文档
+│
+├── build.bat                     # 打包脚本
+├── start-clippy.bat              # 启动脚本（显示窗口）
+├── start-clippy-silent.vbs       # 静默启动脚本（无窗口）
+├── add-to-startup.bat            # 添加到开机启动
+├── remove-from-startup.bat       # 从开机启动移除
+│
+└── cmd/                          # Go源代码
+    ├── server/                   # 服务器源码
+    └── desktop/                  # Fyne桌面端源码（未使用）
 ```
 
-## 快速开始
+## 快速开始（直接使用）
 
-### 1. 安装Python依赖
+### 方法1：一键启动（推荐）
 
+双击 `start-clippy-silent.vbs` 即可静默启动（无黑窗口）
+
+### 方法2：手动启动
+
+1. 双击 `server.exe` 启动服务器
+2. 双击 `clippy-desktop.exe` 启动桌面客户端
+
+### 开机自启动
+
+1. 双击 `add-to-startup.bat` 添加到开机启动
+2. 重启电脑后会自动运行
+3. 如需移除，双击 `remove-from-startup.bat`
+
+---
+
+## 开发者指南
+
+### 1. 环境准备
+
+安装Python依赖：
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 启动服务器
+### 2. 开发模式运行
 
+**启动服务器：**
 ```bash
 server.exe
 ```
 
-服务器将在 `localhost:8948` 启动。
-
-### 3. 启动桌面客户端
-
+**启动桌面客户端（开发模式）：**
 ```bash
 python desktop.py
 ```
 
-桌面客户端会：
-- 最小化到系统托盘（绿色圆圈图标）
-- 自动连接到本地服务器
-- 等待手机端消息
+### 3. 打包桌面客户端
+
+双击 `build.bat` 或运行：
+```bash
+pyinstaller --onefile --windowed --name=clippy-desktop desktop.py
+```
+
+打包后的文件在 `dist/clippy-desktop.exe`
 
 ### 4. 手机端开发
 
@@ -59,31 +93,87 @@ ws://你的电脑IP:8948/ws
 
 ## 使用流程
 
-1. **手机语音输入** → 发送 `update` 消息到服务器
-2. **电脑端弹窗** → 在屏幕右下角显示文本
-3. **点击"复制"** → 文本复制到剪贴板，窗口保持显示
-4. **点击"清空"** → 发送 `clear` 消息，窗口隐藏
+1. **启动Clippy**
+   - 双击 `start-clippy-silent.vbs` 启动服务器和桌面客户端
+   - 桌面客户端会最小化到系统托盘（绿色圆圈图标，透明背景）
+
+2. **手机连接**
+   - 确保手机和电脑在同一局域网
+   - 查看电脑IP地址（cmd输入 `ipconfig`）
+   - 手机端连接 `ws://电脑IP:8948/ws`
+
+3. **发送文本**
+   - 手机语音输入 → 发送 `update` 消息到服务器
+   - 电脑右下角自动弹窗显示文本
+
+4. **复制文本**
+   - 点击蓝色"复制"按钮 → 文本复制到剪贴板
+   - 粘贴到任意位置使用
+
+5. **关闭窗口**
+   - 点击窗口的 ✕ 按钮即可隐藏
+   - 程序继续在后台运行
 
 ## 功能特性
 
-- ✅ WebSocket实时通信
-- ✅ 系统托盘图标
+- ✅ WebSocket 实时通信
+- ✅ 系统托盘图标（透明背景绿色圆圈）
 - ✅ 右下角弹窗显示
 - ✅ 一键复制到剪贴板
-- ✅ 自动重连
+- ✅ 自动重连机制
+- ✅ 静默启动（无黑窗口）
+- ✅ 开机自启动支持
 - ✅ 无需鉴权（局域网使用）
 
 ## 技术栈
 
 - **后端**: Go + gorilla/websocket
-- **桌面端**: Python + tkinter + ttkbootstrap
+- **桌面端**: Python + tkinter + ttkbootstrap + pystray
 - **通信**: WebSocket (JSON格式)
+
+## 常见问题
+
+### Q: 手机连接不上服务器？
+**A:** 检查以下几点：
+1. 电脑和手机是否在同一WiFi
+2. 电脑防火墙是否允许8948端口
+3. IP地址是否正确（cmd输入 `ipconfig` 查看）
+
+### Q: 如何查看程序是否运行？
+**A:** 查看系统托盘是否有绿色圆圈图标
+
+### Q: 如何完全退出程序？
+**A:** 右键托盘图标 → 退出
+
+### Q: 如何获取电脑IP地址？
+**A:**
+```bash
+# Windows
+ipconfig
+
+# 查找"无线局域网适配器"或"以太网适配器"下的IPv4地址
+# 通常是 192.168.x.x 格式
+```
+
+### Q: 开机启动后如何关闭自启动？
+**A:** 双击 `remove-from-startup.bat`
 
 ## 注意事项
 
 - 确保防火墙允许 8948 端口
 - 手机和电脑需在同一局域网
 - 详细API文档见 `API.md`
+- 首次使用建议手动运行测试后再设置开机启动
+
+## 脚本说明
+
+| 文件 | 用途 |
+|------|------|
+| `build.bat` | 打包Python桌面客户端为exe |
+| `start-clippy.bat` | 启动服务器和客户端（显示cmd窗口） |
+| `start-clippy-silent.vbs` | 静默启动（推荐，无窗口） |
+| `add-to-startup.bat` | 添加到Windows开机启动 |
+| `remove-from-startup.bat` | 从开机启动移除 |
 
 ## 开发计划
 
