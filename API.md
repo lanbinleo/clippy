@@ -6,7 +6,35 @@ Clippy 是一个多端同步剪贴板工具，通过 WebSocket 实现手机和�
 ## 服务端信息
 - **地址**: `localhost:8948`
 - **WebSocket端点**: `ws://localhost:8948/ws`
+- **HTTP端点**: `http://localhost:8948/shutdown` (关闭服务器)
 - **协议**: WebSocket (JSON消息格式)
+
+---
+
+## HTTP API
+
+### 关闭服务器 (shutdown)
+
+**端点**: `POST http://localhost:8948/shutdown`
+
+**用途**: 优雅地关闭Clippy服务器
+
+**请求方法**: POST / GET
+
+**请求示例**:
+```bash
+curl -X POST http://localhost:8948/shutdown
+```
+
+**响应**:
+```
+Server shutting down...
+```
+
+**说明**:
+- 服务器收到请求后会在500ms内优雅关闭
+- 所有WebSocket连接会被正常断开
+- 桌面客户端可使用此端点实现"重启服务器"功能
 
 ---
 
