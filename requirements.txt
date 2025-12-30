@@ -1,0 +1,6 @@
+websocket-client
+pystray
+pillow
+ttkbootstrap
+pyperclip
+pyinstaller
