@@ -38,6 +38,10 @@ class ClippyDesktop:
         # 当前文本内容
         self.current_text = ""
 
+        # 服务器连接状态
+        self.server_connected = False
+        self.auto_reconnect = True  # 是否自动重连
+
         # 开机启动路径
         self.startup_folder = os.path.join(
             os.getenv('APPDATA'),
@@ -113,10 +117,8 @@ class ClippyDesktop:
 
     def create_tray_icon(self):
         """创建托盘图标（在后台线程运行）"""
-        # 创建透明背景的图标
-        image = Image.new('RGBA', (64, 64), color=(0, 0, 0, 0))
-        draw = ImageDraw.Draw(image)
-        draw.ellipse([8, 8, 56, 56], fill='#4CAF50', outline='#2E7D32')
+        # 创建绿色图标（默认）
+        image = self.create_icon_image('#4CAF50', '#2E7D32')
 
         menu = Menu(
             MenuItem('显示窗口', self.show_popup_from_tray),
@@ -126,12 +128,43 @@ class ClippyDesktop:
                 self.toggle_startup_from_tray,
                 checked=lambda item: self.is_startup_enabled()
             ),
-            MenuItem('重启服务器', self.restart_server_from_tray),
+            MenuItem(
+                '启动服务器',
+                self.start_server_from_tray,
+                visible=lambda item: not self.check_server_status()
+            ),
+            MenuItem(
+                '重启服务器',
+                self.restart_server_from_tray,
+                visible=lambda item: self.check_server_status()
+            ),
+            MenuItem(
+                '关闭服务器',
+                self.shutdown_server_from_tray,
+                visible=lambda item: self.check_server_status()
+            ),
             Menu.SEPARATOR,
             MenuItem('退出', self.quit_app_from_tray)
         )
 
         self.tray_icon = Icon("Clippy", image, "Clippy", menu)
+
+    def create_icon_image(self, fill_color, outline_color):
+        """创建托盘图标图像"""
+        image = Image.new('RGBA', (64, 64), color=(0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        draw.ellipse([8, 8, 56, 56], fill=fill_color, outline=outline_color)
+        return image
+
+    def update_tray_icon_color(self, connected):
+        """更新托盘图标颜色"""
+        if self.tray_icon:
+            if connected:
+                # 绿色 - 已连接
+                self.tray_icon.icon = self.create_icon_image('#4CAF50', '#2E7D32')
+            else:
+                # 红色 - 未连接
+                self.tray_icon.icon = self.create_icon_image('#F44336', '#C62828')
 
     def run_tray_icon(self):
         """在后台线程运行托盘图标"""
@@ -140,6 +173,17 @@ class ClippyDesktop:
     def is_startup_enabled(self):
         """检测开机启动是否已启用"""
         return os.path.exists(self.startup_shortcut)
+
+    def check_server_status(self):
+        """检测服务器是否在运行"""
+        try:
+            response = requests.get(
+                f"{self.server_http_url}/ws",
+                timeout=1
+            )
+            return True
+        except:
+            return False
 
     def add_to_startup(self):
         """添加到开机启动"""
@@ -225,10 +269,47 @@ $Shortcut.Save()
             print(f"启动服务器失败: {e}")
             return False
 
+    def start_server_from_tray(self, icon=None, item=None):
+        """从托盘菜单启动服务器"""
+        print("正在启动服务器...")
+        # 启用自动重连
+        self.auto_reconnect = True
+        if self.start_server():
+            # 等待服务器启动
+            time.sleep(1)
+            # 连接WebSocket
+            self.connect_websocket()
+            # 更新托盘菜单
+            if self.tray_icon:
+                self.tray_icon.update_menu()
+            print("服务器启动完成")
+
+    def shutdown_server_from_tray(self, icon=None, item=None):
+        """从托盘菜单关闭服务器"""
+        print("正在关闭服务器...")
+        # 禁用自动重连
+        self.auto_reconnect = False
+        # 关闭WebSocket连接
+        if self.ws:
+            self.ws.close()
+        # 关闭服务器
+        if self.shutdown_server():
+            # 更新图标为红色
+            self.update_tray_icon_color(False)
+            self.server_connected = False
+            # 更新托盘菜单
+            if self.tray_icon:
+                self.tray_icon.update_menu()
+            print("服务器已关闭")
+
     def restart_server_from_tray(self, icon=None, item=None):
         """重启服务器（从托盘菜单）"""
         print("正在重启服务器...")
+        # 启用自动重连
+        self.auto_reconnect = True
         # 关闭服务器
+        if self.ws:
+            self.ws.close()
         if self.shutdown_server():
             # 等待服务器关闭
             time.sleep(1)
@@ -239,6 +320,9 @@ $Shortcut.Save()
             time.sleep(1)
             # 重新连接WebSocket
             self.connect_websocket()
+            # 更新托盘菜单
+            if self.tray_icon:
+                self.tray_icon.update_menu()
             print("服务器重启完成")
 
     def show_popup_from_tray(self, icon=None, item=None):
@@ -334,17 +418,40 @@ $Shortcut.Save()
     def on_error(self, ws, error):
         """处理WebSocket错误"""
         print(f"WebSocket错误: {error}")
+        self.server_connected = False
+        # 更新托盘图标为红色
+        self.update_tray_icon_color(False)
+        # 更新托盘菜单
+        if self.tray_icon:
+            self.tray_icon.update_menu()
 
     def on_close(self, ws, close_status_code, close_msg):
         """WebSocket连接关闭"""
         print(f"WebSocket连接关闭: {close_status_code} - {close_msg}")
-        print(f"将在 {self.reconnect_delay} 秒后重连...")
-        time.sleep(self.reconnect_delay)
-        self.connect_websocket()
+        self.server_connected = False
+        # 更新托盘图标为红色
+        self.update_tray_icon_color(False)
+        # 更新托盘菜单
+        if self.tray_icon:
+            self.tray_icon.update_menu()
+
+        # 只有在允许自动重连时才重连
+        if self.auto_reconnect:
+            print(f"将在 {self.reconnect_delay} 秒后重连...")
+            time.sleep(self.reconnect_delay)
+            self.connect_websocket()
+        else:
+            print("自动重连已禁用，不会重连")
 
     def on_open(self, ws):
         """WebSocket连接建立"""
         print("已连接到服务器")
+        self.server_connected = True
+        # 更新托盘图标为绿色
+        self.update_tray_icon_color(True)
+        # 更新托盘菜单
+        if self.tray_icon:
+            self.tray_icon.update_menu()
 
     def connect_websocket(self):
         """连接WebSocket服务器"""
