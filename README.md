@@ -18,6 +18,12 @@
 
 对了，这个软件是我和 Claude Code 一起在一个小时内写完的。
 
+<img src="docs/image-1.png" alt="Architecture Diagram" style="max-width:80%;height:auto; display:inline-block;">
+
+<br>
+
+<img src="docs/image.png" alt="App Screenshot" style="max-width:80%;height:auto; display:inline-block;">
+
 ## 使用方法
 
 作者打包了一份Go编译的服务器、Python桌面客户端，并用Coco编辑器（https://coco.codemao.cn）随手搓了一个APP，也打包进来了。如果你想自己开发手机端，可以参考 `API.md` 文档。
@@ -236,4 +242,4 @@ ipconfig
 - [ ] 添加连接密码保护
 - [ ] 支持文本历史记录
 - [ ] 添加配置文件
-- [ ] 打包为单一可执行文件
+- [X] 打包为单一可执行文件
