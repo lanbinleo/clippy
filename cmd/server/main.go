@@ -2,9 +2,12 @@ package main
 
 import (
 	"clippy/pkg/protocol"
+	"context"
 	"log"
 	"net/http"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -157,16 +160,52 @@ func handleWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	go client.readPump()
 }
 
+// handleShutdown 处理关闭服务器请求
+func handleShutdown(srv *http.Server) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Shutdown request received")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Server shutting down..."))
+
+		// 异步关闭服务器
+		go func() {
+			time.Sleep(500 * time.Millisecond) // 给响应时间返回
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := srv.Shutdown(ctx); err != nil {
+				log.Printf("Server shutdown error: %v", err)
+				os.Exit(1)
+			}
+			log.Println("Server stopped gracefully")
+			os.Exit(0)
+		}()
+	}
+}
+
 func main() {
 	hub := NewHub()
 	go hub.Run()
 
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		handleWebSocket(hub, w, r)
 	})
 
+	// 创建服务器实例
+	srv := &http.Server{
+		Addr:    ":8948",
+		Handler: mux,
+	}
+
+	// 添加关闭端点
+	mux.HandleFunc("/shutdown", handleShutdown(srv))
+
 	log.Println("Clippy server starting on :8948")
-	if err := http.ListenAndServe(":8948", nil); err != nil {
+	log.Println("Endpoints: /ws (WebSocket), /shutdown (HTTP POST)")
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal("ListenAndServe error: ", err)
 	}
 }

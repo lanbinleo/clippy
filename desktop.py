@@ -4,6 +4,10 @@ import time
 import tkinter as tk
 from tkinter import scrolledtext
 from queue import Queue
+import os
+import sys
+import subprocess
+import requests
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 import websocket
@@ -15,6 +19,7 @@ from PIL import Image, ImageDraw
 class ClippyDesktop:
     def __init__(self):
         self.server_url = "ws://localhost:8948/ws"
+        self.server_http_url = "http://localhost:8948"
         self.ws = None
         self.ws_thread = None
         self.reconnect_delay = 5
@@ -32,6 +37,23 @@ class ClippyDesktop:
 
         # 当前文本内容
         self.current_text = ""
+
+        # 开机启动路径
+        self.startup_folder = os.path.join(
+            os.getenv('APPDATA'),
+            'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'
+        )
+        self.startup_shortcut = os.path.join(self.startup_folder, 'Clippy.lnk')
+
+        # 获取当前脚本目录
+        if getattr(sys, 'frozen', False):
+            # 打包后的exe
+            self.app_dir = os.path.dirname(sys.executable)
+        else:
+            # Python脚本
+            self.app_dir = os.path.dirname(os.path.abspath(__file__))
+
+        self.vbs_path = os.path.join(self.app_dir, 'start-clippy-silent.vbs')
 
     def create_main_window(self):
         """创建主窗口（隐藏，用于托盘）"""
@@ -98,6 +120,14 @@ class ClippyDesktop:
 
         menu = Menu(
             MenuItem('显示窗口', self.show_popup_from_tray),
+            Menu.SEPARATOR,
+            MenuItem(
+                '开机启动',
+                self.toggle_startup_from_tray,
+                checked=lambda item: self.is_startup_enabled()
+            ),
+            MenuItem('重启服务器', self.restart_server_from_tray),
+            Menu.SEPARATOR,
             MenuItem('退出', self.quit_app_from_tray)
         )
 
@@ -106,6 +136,110 @@ class ClippyDesktop:
     def run_tray_icon(self):
         """在后台线程运行托盘图标"""
         self.tray_icon.run()
+
+    def is_startup_enabled(self):
+        """检测开机启动是否已启用"""
+        return os.path.exists(self.startup_shortcut)
+
+    def add_to_startup(self):
+        """添加到开机启动"""
+        try:
+            if not os.path.exists(self.vbs_path):
+                print(f"警告: VBS启动脚本不存在: {self.vbs_path}")
+                return False
+
+            # 使用PowerShell创建快捷方式
+            ps_command = f"""
+$WshShell = New-Object -ComObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut('{self.startup_shortcut}')
+$Shortcut.TargetPath = '{self.vbs_path}'
+$Shortcut.WorkingDirectory = '{self.app_dir}'
+$Shortcut.Description = 'Clippy 多端同步剪贴板'
+$Shortcut.Save()
+"""
+            subprocess.run(
+                ['powershell', '-Command', ps_command],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            print("已添加到开机启动")
+            return True
+        except Exception as e:
+            print(f"添加开机启动失败: {e}")
+            return False
+
+    def remove_from_startup(self):
+        """从开机启动移除"""
+        try:
+            if os.path.exists(self.startup_shortcut):
+                os.remove(self.startup_shortcut)
+                print("已从开机启动移除")
+                return True
+            return False
+        except Exception as e:
+            print(f"移除开机启动失败: {e}")
+            return False
+
+    def toggle_startup_from_tray(self, icon=None, item=None):
+        """切换开机启动状态（从托盘菜单）"""
+        if self.is_startup_enabled():
+            self.remove_from_startup()
+        else:
+            self.add_to_startup()
+        # 更新托盘菜单
+        if self.tray_icon:
+            self.tray_icon.update_menu()
+
+    def shutdown_server(self):
+        """关闭服务器"""
+        try:
+            response = requests.post(
+                f"{self.server_http_url}/shutdown",
+                timeout=2
+            )
+            if response.status_code == 200:
+                print("服务器关闭请求已发送")
+                return True
+        except Exception as e:
+            print(f"关闭服务器失败: {e}")
+        return False
+
+    def start_server(self):
+        """启动服务器"""
+        try:
+            server_exe = os.path.join(self.app_dir, 'server.exe')
+            if not os.path.exists(server_exe):
+                print(f"服务器程序不存在: {server_exe}")
+                return False
+
+            # 使用subprocess.Popen在后台启动服务器
+            subprocess.Popen(
+                [server_exe],
+                cwd=self.app_dir,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            print("服务器已启动")
+            return True
+        except Exception as e:
+            print(f"启动服务器失败: {e}")
+            return False
+
+    def restart_server_from_tray(self, icon=None, item=None):
+        """重启服务器（从托盘菜单）"""
+        print("正在重启服务器...")
+        # 关闭服务器
+        if self.shutdown_server():
+            # 等待服务器关闭
+            time.sleep(1)
+
+        # 启动服务器
+        if self.start_server():
+            # 等待服务器启动
+            time.sleep(1)
+            # 重新连接WebSocket
+            self.connect_websocket()
+            print("服务器重启完成")
 
     def show_popup_from_tray(self, icon=None, item=None):
         """从托盘菜单显示窗口"""
