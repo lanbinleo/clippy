@@ -2,6 +2,8 @@
 
 通过手机语音输入，实时同步到电脑端剪贴板的工具。
 
+介绍文章：[https://maxqi.top/p/98.html](https://maxqi.top/p/98.html)
+
 ## 简介
 
 作者比较懒，不喜欢手打字。
